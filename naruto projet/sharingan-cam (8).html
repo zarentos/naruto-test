@@ -1945,10 +1945,17 @@ function _sharingan(cx,cy,r){
   if(chakra){ctx.strokeStyle=`rgba(255,${80+Math.sin(T*.12)*50|0},0,.7)`;ctx.lineWidth=2;ctx.shadowColor='#ff4400';ctx.shadowBlur=10;ctx.beginPath();ctx.arc(cx,cy,r*1.1,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;}
   ctx.restore();
 }
+// ── Vrais fonds depuis le repo (repli sur décors dessinés si pas chargés) ──
+const BG_BASE='https://raw.githubusercontent.com/zarentos/naruto-test/main/naruto%20projet/assets/backgrounds/';
+const BG_FILES=['Training%20Field.png','Uchiha%20Hideout.png','Rocks%20night.png','Suigetsu%20Stage.png','Rocks%20day.png'];
+const BG_IMG=BG_FILES.map((f,i)=>{const im=new Image();im.crossOrigin='anonymous';im.onload=()=>{if(scene===i&&!dimension)drawBg()};im.src=BG_BASE+f;return im});
+function drawCover(x,img){const ar=img.naturalWidth/img.naturalHeight,AR=W/H;let dw,dh;if(ar>AR){dh=H;dw=H*ar}else{dw=W;dh=W/ar}x.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh)}
 function drawBg(){
   bgX.clearRect(0,0,W,H);
   if(dimension==='ice'){_bgDimIce();return}
   if(dimension==='lava'){_bgDimLava();return}
+  const bi=BG_IMG[scene];
+  if(bi&&bi.complete&&bi.naturalWidth>0){drawCover(bgX,bi);return}
   if(scene===0) _bgKonoha();
   else if(scene===1) _bgForest();
   else if(scene===2) _bgNight();
