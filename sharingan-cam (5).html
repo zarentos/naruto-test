@@ -572,7 +572,7 @@ function freeChars(){return chars.filter(c=>!c.convo&&c.mood!=='fight'&&!c.grabb
 function matchmaker(){
   // count current social activity
   const fighting=chars.filter(c=>c.mood==='fight').length;
-  const maxConvo=Math.min(3,Math.max(2,Math.floor(chars.length/3))), maxFightPairs=Math.max(1,Math.round(aggression/45));
+  const maxConvo=2, maxFightPairs=Math.min(2,Math.max(1,Math.round(aggression/55)));
   // start conversations
   if(convos.length<maxConvo && Math.random()<.025){
     const pool=freeChars();
@@ -773,6 +773,16 @@ class Char{
   }
 
   _behave(){
+    if(this.dashFx){
+      const t=this.dashFx.target;
+      if(!t||t.hp<=0){this.dashFx=null;}
+      else{
+        const dx=t.x-this.x;this.facing=dx>0?1:-1;
+        this.x+=clamp(dx,-15,15);this.dashFx.t--;
+        if(Math.abs(dx)<42||this.dashFx.t<=0)this._deliverMelee();
+        return;
+      }
+    }
     if(!this.onGround) return;
     const spd=this.d.spd*(this.aura==='gates'?2.4:this.aura==='sage'?1.5:1)*(this.trainBuffT>0?1.4:1);
     let targetX=null;
@@ -839,17 +849,27 @@ class Char{
 
   // ── combat ──
   _taijutsu(foe){
-    this.atkCD=42+Math.random()*40|0;
-    const dmg=6+Math.random()*8|0;
+    this.atkCD=70+Math.random()*55|0;
+    const dmg=5+Math.random()*6|0;
     foe.hp=clamp(foe.hp-dmg,0,100);foe.anger=clamp(foe.anger+8,0,100);foe.hitT=12;
     foe.vx+=(foe.x>this.x?1:-1)*2.4;foe.vy=-2;foe.onGround=false;
     effects.push({kind:'hit',x:(this.x+foe.x)/2,y:foe.y-26,t:0,dur:12});
     this.rel[foe.type]=clamp((this.rel[foe.type]??45)-1.5,0,100);
     if(foe.hp<=0)this._knockout(foe);
   }
+  _deliverMelee(){
+    const {def,id,target}=this.dashFx;this.dashFx=null;
+    effects.push({kind:def.kind,x:target.x,y:target.y-24,sx:this.x,sy:this.y-30,t:0,dur:def.big?54:42,owner:this});
+    if(def.decal)addDecal(def.decal,target.x,target.groundY());
+    shakeT=def.big?20:13;shakeA=def.big?5:4;
+    target.hp=clamp(target.hp-def.dmg,0,100);target.anger=clamp(target.anger+18,0,100);target.hitT=18;
+    target.vx+=(target.x>this.x?1:-1)*5;target.vy=-4;target.onGround=false;
+    this.rel[target.type]=clamp((this.rel[target.type]??45)-6,0,100);
+    if(target.hp<=0)this._knockout(target);else target.say(pick(['ARGH!','Trop fort...','Impossible!']),140);
+  }
   _maybeTech(foe){
-    // chance, per eligible melee frame, to use a technique instead of a punch
-    let gate=0.05+aggression/2600+(this.anger>55?0.03:0);
+    // fights should mostly be jutsu, not punches → high chance per eligible frame
+    let gate=0.16+aggression/1500+(this.anger>50?0.05:0);
     if(Math.random()>gate) return false;
     const ready=id=>{const t=TECHS[id];return this.chk>=t.chakra && !(this.techCD[id]>0)};
     const avail=this.d.techs.filter(ready);
@@ -899,6 +919,11 @@ class Char{
       effects.push({kind:def.kind,owner:this,t:0,dur:def.dur,variant:def.variant});
       if(def.big){shakeT=24;shakeA=5}
     } else {
+      const MELEE={chidori:1,raikiri:1,chidori_nagashi:1,lotus:1,omote_renge:1,shannaro:1,okasho:1,kusanagi:1};
+      if(MELEE[id] && target && target!==this){
+        // close-combat jutsu: dash in, strike on contact (handled in _behave)
+        this.dashFx={def,id,target,t:46};this.facing=target.x>this.x?1:-1;this.tech=null;return;
+      }
       const tx=target?target.x:this.x+this.facing*60, ty=target?target.y-24:this.y-24;
       effects.push({kind:def.kind,x:tx,y:ty,sx:this.x,sy:this.y-30,t:0,dur:def.big?60:42,owner:this,clones:def.clones});
       if(def.decal)addDecal(def.decal,tx,target?target.y:this.groundY());
@@ -1199,22 +1224,30 @@ function drawEffects(){
         ctx.shadowBlur=0;
         if(o&&!o.kyubi)done=true;if(e.t>=e.dur)done=true;break}
       case 'susanoo':{
-        const al=0.32+Math.sin(e.t*.1)*.12;ctx.translate(e.x,e.y-30*sc);
-        const col=e.variant==='red'?[255,60,40]:[150,90,255];
-        ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},${al+.3})`;ctx.lineWidth=2.5*sc;
-        ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${al})`;ctx.shadowColor=`rgb(${col[0]},${col[1]},${col[2]})`;ctx.shadowBlur=18;
+        const al=0.4+Math.sin(e.t*.1)*.14;ctx.translate(e.x,e.y-34*sc);
+        const col=e.variant==='red'?[255,70,45]:[150,95,255];
+        const grw=Math.min(1,e.t/24);ctx.scale(grw,grw);
+        ctx.shadowColor=`rgb(${col[0]},${col[1]},${col[2]})`;ctx.shadowBlur=26;
+        // glowing body shell
+        ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${al*.5})`;
+        ctx.beginPath();ctx.ellipse(0,-12*sc,56*sc,78*sc,0,0,Math.PI*2);ctx.fill();
         // ribcage
-        ctx.beginPath();ctx.ellipse(0,-10*sc,46*sc,64*sc,0,0,Math.PI*2);ctx.fill();
-        ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},.8)`;
-        for(let r=0;r<5;r++){ctx.beginPath();ctx.ellipse(0,-30*sc+r*16*sc,40*sc-r*2,12*sc,0,0,Math.PI);ctx.stroke()}
-        // skull head
-        ctx.beginPath();ctx.arc(0,-72*sc,18*sc,0,Math.PI*2);ctx.fill();
-        ctx.fillStyle='rgba(0,0,0,.6)';ctx.beginPath();ctx.arc(-7*sc,-74*sc,4*sc,0,Math.PI*2);ctx.arc(7*sc,-74*sc,4*sc,0,Math.PI*2);ctx.fill();
-        // arms
-        ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},.7)`;ctx.lineWidth=6*sc;
-        ctx.beginPath();ctx.moveTo(-40*sc,-20*sc);ctx.lineTo(-70*sc,10*sc);ctx.stroke();
-        ctx.beginPath();ctx.moveTo(40*sc,-20*sc);ctx.lineTo(70*sc,10*sc);ctx.stroke();
-        ctx.shadowBlur=0;ctx.fillStyle=`rgb(${col[0]},${col[1]},${col[2]})`;ctx.font='bold 12px sans-serif';ctx.textAlign='center';ctx.fillText('Susanoo',0,30*sc);
+        ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},.95)`;ctx.lineWidth=3.5*sc;
+        for(let r=0;r<6;r++){ctx.beginPath();ctx.ellipse(0,-36*sc+r*16*sc,46*sc-r*3,14*sc,0,0,Math.PI);ctx.stroke()}
+        ctx.beginPath();ctx.moveTo(0,-44*sc);ctx.lineTo(0,52*sc);ctx.stroke(); // spine
+        // skull head with horns
+        ctx.fillStyle=`rgba(${col[0]},${col[1]},${col[2]},${al+.4})`;ctx.beginPath();ctx.arc(0,-84*sc,20*sc,0,Math.PI*2);ctx.fill();
+        ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},1)`;ctx.lineWidth=3*sc;
+        ctx.beginPath();ctx.moveTo(-12*sc,-98*sc);ctx.lineTo(-22*sc,-118*sc);ctx.moveTo(12*sc,-98*sc);ctx.lineTo(22*sc,-118*sc);ctx.stroke();
+        ctx.fillStyle='rgba(0,0,0,.7)';ctx.beginPath();ctx.arc(-8*sc,-86*sc,4.5*sc,0,Math.PI*2);ctx.arc(8*sc,-86*sc,4.5*sc,0,Math.PI*2);ctx.fill();
+        // arms + sword
+        ctx.strokeStyle=`rgba(${col[0]},${col[1]},${col[2]},.85)`;ctx.lineWidth=8*sc;
+        ctx.beginPath();ctx.moveTo(-46*sc,-24*sc);ctx.lineTo(-82*sc,14*sc);ctx.stroke();
+        ctx.beginPath();ctx.moveTo(46*sc,-24*sc);ctx.lineTo(86*sc,-4*sc);ctx.stroke();
+        ctx.lineWidth=4*sc;ctx.beginPath();ctx.moveTo(86*sc,-4*sc);ctx.lineTo(120*sc,-54*sc);ctx.stroke(); // blade
+        ctx.scale(1/grw,1/grw);
+        ctx.shadowBlur=0;ctx.fillStyle=`rgb(${col[0]},${col[1]},${col[2]})`;ctx.font='bold 13px sans-serif';ctx.textAlign='center';
+        ctx.strokeStyle='rgba(0,0,0,.5)';ctx.lineWidth=3;ctx.strokeText('Susanoo!',0,40*sc);ctx.fillText('Susanoo!',0,40*sc);
         if(e.t>=e.dur)done=true;break}
       case 'gates':{
         const al=0.4+Math.sin(e.t*.18)*.2;ctx.translate(e.x,e.y-26*sc);
@@ -1333,9 +1366,19 @@ function drawEffects(){
         ctx.fillStyle='#fff';ctx.strokeStyle='#7a3f1a';ctx.lineWidth=3;ctx.font='bold 13px sans-serif';ctx.textAlign='center';
         ctx.strokeText('Invocation : Crapaud géant!',0,34);ctx.fillText('Invocation : Crapaud géant!',0,34);
         if(e.t>=e.dur)done=true;break}
-      case 'clones':case 'needles':case 'heal':{
+      case 'needles':{
+        const a=Math.max(0,1-e.t/e.dur);ctx.globalAlpha=a;
+        const sx=e.sx!==undefined?e.sx:e.x,sy=e.sy!==undefined?e.sy:e.y-30;
+        const gr=Math.min(1,e.t/10);
+        ctx.strokeStyle='#e8e8e8';ctx.lineWidth=2.4;ctx.fillStyle='#f4f4f4';
+        for(let k=0;k<16;k++){const off=(k/15-0.5);const ex=sx+(e.x-sx)*gr+off*70*gr,ey=sy+(e.y-sy)*gr+off*22*gr;
+          ctx.beginPath();ctx.moveTo(sx,sy);ctx.quadraticCurveTo((sx+ex)/2,sy-26,ex,ey);ctx.stroke();
+          ctx.beginPath();ctx.moveTo(ex,ey);ctx.lineTo(ex+(ex>sx?5:-5),ey-2);ctx.lineTo(ex+(ex>sx?5:-5),ey+2);ctx.fill();}
+        ctx.fillStyle='#fff';ctx.strokeStyle='#7a3f1a';ctx.lineWidth=3;ctx.font='bold 12px sans-serif';ctx.textAlign='center';
+        ctx.strokeText('Hari Jizō! (cheveux-aiguilles)',e.x,e.y-44);ctx.fillText('Hari Jizō! (cheveux-aiguilles)',e.x,e.y-44);
+        if(e.t>=e.dur)done=true;break}
+      case 'clones':case 'heal':{
         ctx.translate(e.x,e.y);ctx.globalAlpha=Math.max(0,1-e.t/e.dur);
-        if(e.kind==='needles'){ctx.strokeStyle='#fff';ctx.lineWidth=1.5;for(let k=0;k<16;k++){const ang=k/16*Math.PI*2;ctx.beginPath();ctx.moveTo(0,0);ctx.lineTo(Math.cos(ang)*40,Math.sin(ang)*40);ctx.stroke()}}
         if(e.kind==='heal'){ctx.fillStyle='#5f6';ctx.font='20px sans-serif';ctx.textAlign='center';ctx.fillText('💚',0,0)}
         if(e.t>=e.dur)done=true;break}
       case 'flash':{
@@ -1439,12 +1482,16 @@ function drawEffects(){
         if(e.t>=e.dur)done=true;break}
       case 'bijudama':{
         const a=Math.max(0,1-e.t/e.dur);ctx.globalAlpha=a;
-        const sz=24+Math.min(40,e.t);const g=ctx.createRadialGradient(e.x,e.y,2,e.x,e.y,sz);
-        g.addColorStop(0,'#111');g.addColorStop(.5,'#220033');g.addColorStop(.8,'#aa33ff');g.addColorStop(1,'transparent');
+        const sz=30+Math.min(54,e.t*1.1);
+        ctx.shadowColor='#aa33ff';ctx.shadowBlur=30;
+        if(e.sx!==undefined){ctx.strokeStyle='rgba(180,70,255,.6)';ctx.lineWidth=12;ctx.beginPath();ctx.moveTo(e.sx,e.sy);ctx.lineTo(e.x,e.y);ctx.stroke();ctx.strokeStyle='rgba(255,255,255,.7)';ctx.lineWidth=4;ctx.stroke()}
+        const g=ctx.createRadialGradient(e.x,e.y,2,e.x,e.y,sz);
+        g.addColorStop(0,'#fff');g.addColorStop(.3,'#cc66ff');g.addColorStop(.6,'#5a1a8a');g.addColorStop(.85,'#1a0033');g.addColorStop(1,'transparent');
         ctx.fillStyle=g;ctx.beginPath();ctx.arc(e.x,e.y,sz,0,Math.PI*2);ctx.fill();
-        ctx.strokeStyle='rgba(200,100,255,.7)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(e.x,e.y,sz,0,Math.PI*2);ctx.stroke();
-        if(e.sx!==undefined){ctx.strokeStyle='rgba(170,60,255,.5)';ctx.lineWidth=8;ctx.beginPath();ctx.moveTo(e.sx,e.sy);ctx.lineTo(e.x,e.y);ctx.stroke()}
-        ctx.fillStyle='#cc88ff';ctx.font='bold 13px sans-serif';ctx.textAlign='center';ctx.fillText('Bijūdama!',e.x,e.y-sz-8);
+        ctx.strokeStyle='rgba(210,120,255,.85)';ctx.lineWidth=3;ctx.beginPath();ctx.arc(e.x,e.y,sz,0,Math.PI*2);ctx.stroke();ctx.shadowBlur=0;
+        ctx.fillStyle='rgba(220,150,255,.8)';for(let k=0;k<10;k++){const ang=e.t*.18+k/10*Math.PI*2;ctx.beginPath();ctx.arc(e.x+Math.cos(ang)*sz*1.15,e.y+Math.sin(ang)*sz*1.15,3.5,0,Math.PI*2);ctx.fill()}
+        ctx.fillStyle='#fff';ctx.strokeStyle='#7a1aaa';ctx.lineWidth=3;ctx.font='bold 14px sans-serif';ctx.textAlign='center';
+        ctx.strokeText('Bijūdama!',e.x,e.y-sz-10);ctx.fillText('Bijūdama!',e.x,e.y-sz-10);
         if(e.t>=e.dur)done=true;break}
       case 'kirin':{
         const a=Math.max(0,1-e.t/e.dur);ctx.globalAlpha=a;
@@ -1937,6 +1984,7 @@ function drawChar(c){
 }
 function _statusIcons(c,sc){
   if(c.isClone)return;
+  if(c.bubble)return; // don't cover the speech bubble while talking
   let icon='💭',label='réfléchit';
   if(c.mood==='fight'){icon='⚔️';label='se bat'}
   else if(c.act&&c.act.kind==='eat'){icon='🍖';label='mange'}
