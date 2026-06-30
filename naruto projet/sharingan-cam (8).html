@@ -177,6 +177,7 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;bac
     <button class="btn danger" onclick="bigBattle()">⚔ Bataille</button>
     <button class="btn" onclick="peace()">☮ Paix</button>
     <button class="btn" id="frogBtn" onclick="toggleFrog()">🐸 Crapauds</button>
+    <button class="btn" id="aiBtn" onclick="initAI()">🧠 Activer l'IA</button>
     <button class="btn" id="btnChakra" onclick="toggleChakra()">🔵 Chakra+</button>
     <button class="btn" id="btnShar" onclick="toggleSharingan()">👁️ Sharingan ON</button>
   </div>
@@ -615,7 +616,7 @@ function matchmaker(){
       // partner: bias by social + proximity
       const cand=pool.filter(c=>c!==a);
       const b=cand.sort((x,y)=>Math.hypot(x.x-a.x,x.y-a.y)-Math.hypot(y.x-a.x,y.y-a.y))[0];
-      if(b && a.d.social+b.d.social>3){
+      if(b && a.d.social+b.d.social>3 && !(window.AI&&AI.ready)){
         convos.push(new Convo(a,b));
       }
     }
@@ -2573,6 +2574,73 @@ function bigBattle(){for(const c of chars){const f=pick(chars.filter(x=>x!==c));
 function peace(){for(const c of [...chars,...clones]){c.setMood('idle');c.moodT=120;c.anger=0;c.hp=100;c.foe=null;c.partner=null;if(c.convo)c.convo.end();c.say(pick(['☮','Paix.','La paix...','Enfin calme.']),140)}convos=[];clones=[];notify('☮ Tout le monde se calme','#44aaff')}
 function toggleChakra(){chakra=!chakra;document.getElementById('btnChakra').classList.toggle('on',chakra);notify(chakra?'🔵 Sharingan en surrégime':'Chakra mode off',chakra?'#ff6600':'#888')}
 function toggleFrog(){frogMode=!frogMode;document.getElementById('frogBtn').classList.toggle('on',frogMode);notify(frogMode?'🐸 Tout le monde en crapaud!':'Retour à la normale','#6ec24a')}
+
+const AI={engine:null,ready:false,busy:false,loading:false,model:'Llama-3.2-1B-Instruct-q4f16_1-MLC'};
+window.AI=AI;
+const AI_PERSONA={
+ naruto:'Naruto Uzumaki, hyper energique, adore les ramen, veut devenir Hokage, dit dattebayo',
+ sasuke:'Sasuke Uchiha, froid, hautain, vengeur, meprise les faibles',
+ sakura:'Sakura Haruno, temperament explosif, medic-nin, amoureuse de Sasuke',
+ kakashi:'Kakashi Hatake, nonchalant, sarcastique, lit des romans coquins',
+ itachi:'Itachi Uchiha, calme, enigmatique, melancolique, parle peu',
+ orochimaru:'Orochimaru, sinistre, obsede par l immortalite, siffle',
+ jiraya:'Jiraya, ermite pervers, vantard, blagueur, aime le sake',
+ pain:'Pain, se prend pour un dieu, froid, parle de douleur',
+ deidara:'Deidara, artiste explosif arrogant, l art est une explosion',
+ konan:'Konan, calme, loyale, melancolique, manie le papier',
+ sai:'Sai, sans emotions, maladroit socialement, franc et brut',
+ shikamaru:'Shikamaru, paresseux, stratege genie, tout est galere',
+ suigetsu:'Suigetsu, taquin, sadique, adore se battre a l epee',
+ karin:'Karin, obsedee par Sasuke, colerique, capteur de chakra',
+ jugo:'Jugo, doux mais acces de rage meurtriere, parle peu'
+};
+function aiPersona(c){return AI_PERSONA[c.type]||c.name;}
+async function initAI(){
+  if(AI.loading||AI.ready)return;
+  if(!navigator.gpu){notify('WebGPU indisponible (ouvre dans Chrome recent)','#ff6666');return;}
+  AI.loading=true;
+  const btn=document.getElementById('aiBtn'); if(btn)btn.textContent='IA: chargement...';
+  notify('IA: telechargement du modele (1er lancement long, ~1 Go)...','#7fd0ff');
+  try{
+    const webllm=await import('https://esm.run/@mlc-ai/web-llm');
+    AI.engine=await webllm.CreateMLCEngine(AI.model,{initProgressCallback:p=>{
+      const pct=Math.round((p.progress||0)*100); if(btn)btn.textContent='IA '+pct+'%';
+    }});
+    AI.ready=true;
+    if(btn){btn.textContent='IA active';btn.classList.add('on');}
+    notify('IA prete - conversations en direct activees','#7fff7f');
+  }catch(err){
+    if(btn)btn.textContent='IA (echec)';
+    notify('IA indisponible: '+((err&&err.message)||err),'#ff6666'); console.error(err);
+  }
+  AI.loading=false;
+}
+async function aiExchange(){
+  if(!AI.ready||AI.busy)return;
+  const pool=chars.filter(c=>c.hp>0&&!c.grabbed&&c.bubT<=0&&c.castT<=0);
+  if(pool.length<2)return;
+  const a=pick(pool);
+  const near=pool.filter(c=>c!==a).sort((x,y)=>Math.abs(x.x-a.x)-Math.abs(y.x-a.x));
+  const b=near[0]; if(!b)return;
+  AI.busy=true;
+  try{
+    const st=stance(a,b);
+    const rel=st==='rival'?'rivaux, tendus':st==='friend'?'amis proches':'neutres';
+    const sit=(a.mood==='fight'||b.mood==='fight')?'ils sont en plein combat':'ils se croisent tranquillement';
+    const sys='Tu ecris un mini-dialogue en francais entre deux personnages de Naruto. Chaque replique MAX 9 mots, ton familier, fidele au caractere. Aucune narration, aucun guillemet.';
+    const usr='A = '+aiPersona(a)+'.\nB = '+aiPersona(b)+'.\nRelation: '+rel+'. Contexte: '+sit+'.\nEcris exactement 2 lignes:\nA: <replique courte de '+a.name+'>\nB: <replique courte de '+b.name+'>';
+    const res=await AI.engine.chat.completions.create({messages:[{role:'system',content:sys},{role:'user',content:usr}],temperature:0.9,max_tokens:70});
+    const txt=(res.choices&&res.choices[0]&&res.choices[0].message.content)||'';
+    const ma=txt.match(/A\s*[:\-]\s*(.+)/i), mb=txt.match(/B\s*[:\-]\s*(.+)/i);
+    const clean=s=>s.replace(/^[\s"'\u00ab\u00bb]+|[\s"'\u00ab\u00bb]+$/g,'').slice(0,90);
+    a.facing=b.x>a.x?1:-1;
+    if(ma){a.say(clean(ma[1]),220);}
+    if(mb){const lb=clean(mb[1]);setTimeout(()=>{if(b.hp>0){b.facing=a.x>b.x?1:-1;b.say(lb,220);}},1700);}
+  }catch(err){console.error(err);}
+  AI.busy=false;
+}
+setInterval(()=>{aiExchange();},6500);
+
 function toggleSharingan(){sharinganOn=!sharinganOn;document.getElementById('btnShar').classList.toggle('off',!sharinganOn);document.getElementById('btnShar').textContent=sharinganOn?'👁️ Sharingan ON':'👁️ Sharingan OFF';notify(sharinganOn?'Sharingan activé':'Sharingan désactivé','#cc1518')}
 document.getElementById('sldCam').oninput=function(){camOpacity=+this.value;document.getElementById('vCam').textContent=this.value+'%'};
 document.getElementById('sldShar').oninput=function(){sharScale=this.value/100;document.getElementById('vShar').textContent=this.value+'%'};
