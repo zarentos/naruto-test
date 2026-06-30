@@ -782,7 +782,7 @@ class Char{
       effects.push({kind:'fx',fx:eff.fx,mode:eff.mode,scale:eff.scale||1.6,
         x:(eff.mode==='oncaster')?this.x:tx, y:(eff.mode==='oncaster')?this.y-30:ty,
         sx:fx0,sy:fy0,t:0,dur:n*7+20,owner:this});
-      shakeT=12;shakeA=3;
+      shakeT=12;shakeA=3; hitProp(tx,ty,64);
       if(f&&f.hp>0){f.hp=clamp(f.hp-dmg,0,100);f.anger=clamp(f.anger+16,0,100);f.hitT=16;
         f.vx+=(f.x>this.x?1:-1)*4;f.vy=-3;f.onGround=false;
         this.rel[f.type]=clamp((this.rel[f.type]??45)-5,0,100);
@@ -909,6 +909,7 @@ class Char{
     foe.vx+=(foe.x>this.x?1:-1)*2.4;foe.vy=-2;foe.onGround=false;
     effects.push({kind:'hit',x:(this.x+foe.x)/2,y:foe.y-26,t:0,dur:12});
     this.rel[foe.type]=clamp((this.rel[foe.type]??45)-1.5,0,100);
+    hitProp(foe.x,foe.y-30,42);
     if(foe.hp<=0)this._knockout(foe);
   }
   _deliverMelee(){
@@ -2028,6 +2029,52 @@ const BG_FILES=['Training%20Field.png','Uchiha%20Hideout.png','Rocks%20night.png
 // content crop (trims the blue #004080 border so we zoom on the real scene)
 const BG_CROP={0:[31,29,505,341],1:[26,43,508,320],2:[99,82,512,384],3:[99,80,512,384],4:[99,81,512,384]};
 const BG_IMG=BG_FILES.map((f,i)=>{const im=new Image();im.crossOrigin='anonymous';im.onload=()=>{if(scene===i&&!dimension)drawBg()};im.src=BG_BASE+f;return im});
+const PROP_DATA={"src":"Suigetsu%20Stage.png","tank":{"intact":[87,867,67,114],"cracked":[422,696,74,119],"broken":[546,694,71,119]},"shards":[]};
+let PROP_CANVAS=null, props=[];
+(function loadPropSheet(){
+  const img=new Image();img.crossOrigin='anonymous';
+  img.onload=()=>{try{const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;
+    const cx=cv.getContext('2d');cx.drawImage(img,0,0);const idd=cx.getImageData(0,0,cv.width,cv.height),p=idd.data;
+    for(let i=0;i<p.length;i+=4){if(Math.abs(p[i])+Math.abs(p[i+1]-64)+Math.abs(p[i+2]-128)<70)p[i+3]=0;}
+    cx.putImageData(idd,0,0);PROP_CANVAS=cv;}catch(e){PROP_CANVAS=null;}};
+  img.onerror=()=>{PROP_CANVAS=null;};
+  img.src=BG_BASE+PROP_DATA.src;
+})();
+function spawnProps(){
+  props=[];
+  if(scene!==3)return;
+  const gy=groundTop()+18;
+  const xs=[W*0.15,W*0.39,W*0.64,W*0.87];
+  for(const x of xs)props.push({x:x,gy:gy,hp:2,state:'intact',hitT:0});
+}
+function drawProps(){
+  if(scene!==3||!PROP_CANVAS)return;
+  const tk=PROP_DATA.tank;
+  for(const p of props){
+    const f=p.state==='broken'?tk.broken:p.state==='cracked'?tk.cracked:tk.intact;
+    const s=1.05,dw=f[2]*s,dh=f[3]*s,jx=p.hitT>0?(Math.random()-.5)*5:0;
+    ctx.save();ctx.imageSmoothingEnabled=false;
+    ctx.fillStyle='rgba(0,0,0,.26)';ctx.beginPath();ctx.ellipse(p.x,p.gy+2,dw*0.42,7,0,0,Math.PI*2);ctx.fill();
+    ctx.drawImage(PROP_CANVAS,f[0],f[1],f[2],f[3],p.x-dw/2+jx,p.gy-dh,dw,dh);
+    ctx.restore();
+    if(p.hitT>0)p.hitT--;
+  }
+}
+function hitProp(x,y,r){
+  if(scene!==3)return false;r=r||52;
+  for(const p of props){
+    if(p.state==='broken')continue;
+    const cx=p.x, cy=p.gy-58;
+    if(Math.abs(cx-x)<r && Math.abs(cy-y)<82){
+      p.hp--; p.hitT=12; p.state=p.hp<=0?'broken':'cracked';
+      effects.push({kind:'fx',fx:p.hp<=0?'smoke':'burst_blue',mode:'oncaster',scale:p.hp<=0?2.0:1.5,x:cx,y:cy,sx:cx,sy:cy,t:0,dur:p.hp<=0?30:22});
+      if(p.hp<=0)notify("Prison d'eau brisée!","#7fd0ff");
+      shakeT=Math.max(shakeT,9);shakeA=Math.max(shakeA,2);
+      return true;
+    }
+  }
+  return false;
+}
 function drawCover(x,img,c){const sx=c?c[0]:0,sy=c?c[1]:0,sw=c?c[2]:img.naturalWidth,sh=c?c[3]:img.naturalHeight;const ar=sw/sh,AR=W/H;let dw,dh;if(ar>AR){dh=H;dw=H*ar}else{dw=W;dh=W/ar}x.drawImage(img,sx,sy,sw,sh,(W-dw)/2,(H-dh)/2,dw,dh)}
 function drawBg(){
   bgX.clearRect(0,0,W,H);
@@ -2457,6 +2504,7 @@ mainC.addEventListener('click',e=>{
   if(zoomed){closeZoom();return}
   const r=mainC.getBoundingClientRect();
   const mx=(e.clientX-r.left)*(W/r.width),my=(e.clientY-r.top)*(H/r.height);
+  if(hitProp(mx,my,46))return;
   for(const c of chars)if(Math.hypot(c.x-mx,c.y-my)<48*c.scale){openZoom(c);return}
 });
 
@@ -2519,7 +2567,7 @@ function applyRoster(){spawnChars();buildPanels();buildTechPanel();notify('Équi
 
 // ─── CONTROLS ────────────────────────────────────────────────
 function setScene(i){scene=i;dimension=null;dimT=0;['sc0','sc1','sc2','sc3','sc4'].forEach((id,j)=>{const el=document.getElementById(id);if(el)el.classList.toggle('on',j===i)});
-  initObjs();drawBg();decals=[];redrawDecals();for(const c of chars){c.depth=clamp(c.depth,DEPTH_MIN,DEPTH_MAX);c.y=c.groundY()}}
+  initObjs();drawBg();decals=[];redrawDecals();spawnProps();for(const c of chars){c.depth=clamp(c.depth,DEPTH_MIN,DEPTH_MAX);c.y=c.groundY()}}
 function selItem(el,it){curItem=it;document.querySelectorAll('.ib').forEach(b=>b.classList.remove('sel'));el.classList.add('sel')}
 function bigBattle(){for(const c of chars){const f=pick(chars.filter(x=>x!==c));if(f){c.setMood('fight');c.foe=f;c.fightT=400;c.anger=70}}notify('⚔ Bataille générale!','#ff2200')}
 function peace(){for(const c of [...chars,...clones]){c.setMood('idle');c.moodT=120;c.anger=0;c.hp=100;c.foe=null;c.partner=null;if(c.convo)c.convo.end();c.say(pick(['☮','Paix.','La paix...','Enfin calme.']),140)}convos=[];clones=[];notify('☮ Tout le monde se calme','#44aaff')}
@@ -2593,6 +2641,7 @@ function loop(){
 
   matchmaker();
   drawObjs();
+  drawProps();
   const all=[...chars,...clones].sort((a,b)=>a.y-b.y);
   for(const c of all)c.update();
   for(const c of all)drawChar(c);
@@ -2650,7 +2699,7 @@ function spawnChars(){
   set('boruto','naruto',86);set('naruto','boruto',86);set('boruto','sasuke',70);
 }
 function init(){
-  initObjs();drawBg();spawnChars();buildPanels();buildTechPanel();buildCharSelect();
+  initObjs();drawBg();spawnChars();buildPanels();buildTechPanel();buildCharSelect();spawnProps();
   setupMP();loop();
   setInterval(()=>{ // ambient need spikes
     const c=pick(chars);if(!c)return;const r=Math.random();
