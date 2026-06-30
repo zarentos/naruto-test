@@ -166,11 +166,11 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;bac
     <input type="range" id="sldAggr" min="0" max="100" value="35"><span class="val" id="vAggr">35</span></div>
   <div class="sep"></div>
   <div class="grp">
-    <button class="btn on" id="sc0" onclick="setScene(0)">Terrain</button>
-    <button class="btn" id="sc1" onclick="setScene(1)">Repaire</button>
-    <button class="btn" id="sc2" onclick="setScene(2)">Roches nuit</button>
-    <button class="btn" id="sc3" onclick="setScene(3)">Lac</button>
-    <button class="btn" id="sc4" onclick="setScene(4)">Roches jour</button>
+    <button class="btn on" id="sc0" onclick="setScene(0)">Training Field</button>
+    <button class="btn" id="sc1" onclick="setScene(1)">Uchiha Hideout</button>
+    <button class="btn" id="sc2" onclick="setScene(2)">Rocks night</button>
+    <button class="btn" id="sc3" onclick="setScene(3)">Suigetsu Stage</button>
+    <button class="btn" id="sc4" onclick="setScene(4)">Rocks day</button>
   </div>
   <div class="sep"></div>
   <div class="grp">
@@ -1953,7 +1953,7 @@ function _sharingan(cx,cy,r){
 const BG_BASE='https://raw.githubusercontent.com/zarentos/naruto-test/main/naruto%20projet/assets/backgrounds/';
 const BG_FILES=['Training%20Field.png','Uchiha%20Hideout.png','Rocks%20night.png','Suigetsu%20Stage.png','Rocks%20day.png'];
 // content crop (trims the blue #004080 border so we zoom on the real scene)
-const BG_CROP={0:[31,29,505,491],1:[26,43,508,477],2:[11,28,600,577],3:[19,33,662,1248],4:[13,34,633,752]};
+const BG_CROP={0:[31,29,505,341],1:[26,43,508,320],2:[99,82,512,384],3:[99,80,512,384],4:[99,81,512,384]};
 const BG_IMG=BG_FILES.map((f,i)=>{const im=new Image();im.crossOrigin='anonymous';im.onload=()=>{if(scene===i&&!dimension)drawBg()};im.src=BG_BASE+f;return im});
 function drawCover(x,img,c){const sx=c?c[0]:0,sy=c?c[1]:0,sw=c?c[2]:img.naturalWidth,sh=c?c[3]:img.naturalHeight;const ar=sw/sh,AR=W/H;let dw,dh;if(ar>AR){dh=H;dw=H*ar}else{dw=W;dh=W/ar}x.drawImage(img,sx,sy,sw,sh,(W-dw)/2,(H-dh)/2,dw,dh)}
 function drawBg(){
