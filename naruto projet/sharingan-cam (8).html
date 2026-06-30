@@ -667,7 +667,7 @@ class Char{
     // tech state
     this.tech=null;this.techWind=0;this.aura=null;this.auraT=0;
     this.kyubi=false;this.special=false;this.techCD={};
-    this.fightT=0;this.objTarget=null;this.objState=null;this.objT=0;this.trainBuffT=0;
+    this.fightT=0;this.objTarget=null;this.objState=null;this.objT=0;this.trainBuffT=0;this.castT=0;this.transformT=0;
     this.prevX=x;this.prevY=this.y;this.grabbed=false;this.grabT=0;
     this.isClone=false;this.cloneA=1;
   }
@@ -760,6 +760,8 @@ class Char{
     if(this.atkCD>0)this.atkCD--;
     if(this.petCD>0)this.petCD--;
     if(this.trainBuffT>0)this.trainBuffT--;
+    if(this.castT>0)this.castT--;
+    if(this.transformT>0)this.transformT--;
     if(this.hitT>0)this.hitT--;
     if(this.guardT>0)this.guardT--;
     if(this.landT>0)this.landT--;
@@ -773,10 +775,13 @@ class Char{
     for(const k in this.techCD)if(this.techCD[k]>0)this.techCD[k]--;
     if(this.techCDg>0)this.techCDg--;
     if(this._pend && this.animT<=this._pend.t){
-      const f=this._pend.foe;this._pend=null;
-      if(f&&f.hp>0){f.hp=clamp(f.hp-14,0,100);f.anger=clamp(f.anger+16,0,100);f.hitT=16;
+      const f=this._pend.foe, eff=this._pend.eff||{kind:'hit'}, dmg=this._pend.dmg||14; this._pend=null;
+      const tx=f?f.x:this.x+this.facing*130, ty=f?f.y-24:this.y-24;
+      const big=['chibaku','kirin','amaterasu','tsukuyomi','sand_tsunami','rasenshuriken'].includes(eff.kind);
+      effects.push({kind:eff.kind,x:tx,y:ty,sx:this.x,sy:this.y-32,t:0,dur:big?56:eff.kind==='hit'?14:44,owner:this});
+      shakeT=big?16:10;shakeA=big?4:3;
+      if(f&&f.hp>0){f.hp=clamp(f.hp-dmg,0,100);f.anger=clamp(f.anger+16,0,100);f.hitT=16;
         f.vx+=(f.x>this.x?1:-1)*4;f.vy=-3;f.onGround=false;
-        effects.push({kind:'hit',x:f.x,y:f.y-26,t:0,dur:12});shakeT=10;shakeA=3;
         this.rel[f.type]=clamp((this.rel[f.type]??45)-5,0,100);
         if(f.hp<=0)this._knockout(f);else if(Math.random()<.5)f.say(pick(['Argh!','Tch!','...!']),120);}
     }
@@ -828,7 +833,8 @@ class Char{
       }
     }
     if(!this.onGround) return;
-    const spd=this.d.spd*(this.aura==='gates'?2.4:this.aura==='sage'?1.5:1)*(this.trainBuffT>0?1.4:1);
+    if(this.castT>0){ if(this.foe&&this.foe!==this)this.facing=this.foe.x>this.x?1:-1; return; }
+    const spd=this.d.spd*(this.aura==='gates'?2.4:this.aura==='sage'?1.5:1)*(this.trainBuffT>0?1.4:1)*(this.transformT>0?1.35:1);
     let targetX=null;
     if(this.mood==='wander'){
       targetX=this.roamX;
@@ -922,12 +928,20 @@ class Char{
   }
   _castSpriteMove(foe){
     const d=SPR_DATA[this.type]; if(!d||!d.moves||!d.moves.length) return false;
-    const mv=pick(d.moves);
-    this.animFrames=mv.f; this.animT=mv.f.length*6+16;
+    return this.playMove(pick(d.moves),foe);
+  }
+  playMove(mv,foe){
+    const eff=moveEffect(mv.n);
+    this.animFrames=mv.f; this.animT=mv.f.length*6+26; this.castT=this.animT;
     this.facing=(foe&&foe!==this)?(foe.x>this.x?1:-1):this.facing;
     this.chk=Math.max(0,this.chk-26);
     this.say(mv.n+'!',130); notify(`✦ ${this.name} → ${mv.n}`,'#ffcc33');
-    this._pend=foe?{foe,dmg:14+Math.random()*12|0,t:Math.floor(this.animT*0.45)}:null;
+    if(eff.transform){
+      this.transformT=900;
+      effects.push({kind:eff.aura,x:this.x,y:this.y,t:0,dur:900,owner:this});
+      this.hp=clamp(this.hp+12,0,100); this._pend=null; return true;
+    }
+    this._pend={foe,dmg:13+Math.random()*12|0,t:Math.floor(this.animT*0.5),eff};
     return true;
   }
   _knockout(foe){
@@ -2024,6 +2038,29 @@ function loadSprite(key){
   img.src=SPR_BASE+d.file;
 }
 Object.keys(SPR_DATA).forEach(loadSprite);
+function moveEffect(nm){
+  const s=nm.toLowerCase();
+  if(/transf|kyūbi|kyuubi|ermite|sage|sceau maudit|cursed|conversion|crapaud/.test(s)){
+    const aura=/kyūbi|kyuubi/.test(s)?'kyubi':/ermite|sage|crapaud|conversion/.test(s)?'sage':'sharingan_reveal';
+    return {transform:true,aura};
+  }
+  if(/rasen.?shuriken/.test(s))return{kind:'rasenshuriken'};
+  if(/rasengan/.test(s))return{kind:'rasengan'};
+  if(/chidori|eisō|eiso/.test(s))return{kind:'chidori'};
+  if(/raikiri/.test(s))return{kind:'raikiri'};
+  if(/kirin/.test(s))return{kind:'kirin'};
+  if(/amaterasu/.test(s))return{kind:'amaterasu'};
+  if(/tsukuyomi/.test(s))return{kind:'tsukuyomi'};
+  if(/kamui/.test(s))return{kind:'kamui'};
+  if(/chibaku/.test(s))return{kind:'chibaku'};
+  if(/shinra|tensei|voies|path/.test(s))return{kind:'shinra'};
+  if(/banshō|ten'in|tenin/.test(s))return{kind:'pull'};
+  if(/serpent|snake|sen'ei|jashu/.test(s))return{kind:'snakes'};
+  if(/suiton|aqua|water|suikō|suiko|eau/.test(s))return{kind:'sand_tsunami'};
+  if(/goukak|katon|endan|feu|flame|fire|argile|clay|spider|falcon|eagle|bombe|explos/.test(s))return{kind:'fireball'};
+  if(/papier|paper|shuriken|kunai|shikigami|kami|chōjū|chouju|encre|ink/.test(s))return{kind:'needles'};
+  return{kind:'hit'};
+}
 function drawSpriteFrame(c){
   const cv=SPR_CANVAS[c.type],d=SPR_DATA[c.type];if(!cv||!d)return false;
   let frames;
@@ -2364,9 +2401,7 @@ function refreshZoom(){
         if(c.grabbed){notify(`${c.name} est occupé`,'#888');return}
         const foe=chars.filter(x=>x!==c).sort((p,q)=>(c.rel[p.type]??45)-(c.rel[q.type]??45))[0];
         if(foe){c.setMood('fight');c.foe=foe;c.fightT=280}
-        c.animFrames=mv.f;c.animT=mv.f.length*6+16;c.facing=(foe&&foe.x>c.x)?1:-1;
-        c.say(mv.n+'!',130);notify(`✦ ${c.name} → ${mv.n}`,'#ffcc33');
-        c._pend=foe?{foe,dmg:14+Math.random()*12|0,t:Math.floor((mv.f.length*6+16)*0.45)}:null;
+        c.playMove(mv,foe);
         closeZoom();
       };
       zt.appendChild(b);
