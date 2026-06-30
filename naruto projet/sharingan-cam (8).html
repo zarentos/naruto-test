@@ -166,16 +166,17 @@ input[type=range]::-moz-range-thumb{width:13px;height:13px;border-radius:50%;bac
     <input type="range" id="sldAggr" min="0" max="100" value="35"><span class="val" id="vAggr">35</span></div>
   <div class="sep"></div>
   <div class="grp">
-    <button class="btn on" id="sc0" onclick="setScene(0)">Konoha</button>
-    <button class="btn" id="sc1" onclick="setScene(1)">Forêt</button>
-    <button class="btn" id="sc2" onclick="setScene(2)">Nuit</button>
-    <button class="btn" id="sc3" onclick="setScene(3)">Arène</button>
-    <button class="btn" id="sc4" onclick="setScene(4)">Pont</button>
+    <button class="btn on" id="sc0" onclick="setScene(0)">Terrain</button>
+    <button class="btn" id="sc1" onclick="setScene(1)">Repaire</button>
+    <button class="btn" id="sc2" onclick="setScene(2)">Roches nuit</button>
+    <button class="btn" id="sc3" onclick="setScene(3)">Lac</button>
+    <button class="btn" id="sc4" onclick="setScene(4)">Roches jour</button>
   </div>
   <div class="sep"></div>
   <div class="grp">
     <button class="btn danger" onclick="bigBattle()">⚔ Bataille</button>
     <button class="btn" onclick="peace()">☮ Paix</button>
+    <button class="btn" id="frogBtn" onclick="toggleFrog()">🐸 Crapauds</button>
     <button class="btn" id="btnChakra" onclick="toggleChakra()">🔵 Chakra+</button>
     <button class="btn" id="btnShar" onclick="toggleSharingan()">👁️ Sharingan ON</button>
   </div>
@@ -319,7 +320,7 @@ const CDEFS={
   jiraya:{name:'Jiraya',emoji:'🐸',voice:'jovial',spd:2.0,jump:8,social:4,aggro:2,brave:true,
     interj:['ahh la jeunesse!','je suis le grand Jiraya!','hé hé...'],
     objLove:'scroll',
-    techs:['sage_mode','rasengan_j','toad_summon','hair_needles','sexy_jutsu']},
+    techs:['sage_mode','rasengan_j','toad_summon','hair_needles','sexy_jutsu','frogform']},
   obito:{name:'Obito',emoji:'🌀',voice:'cold',spd:2.5,jump:9,social:1,aggro:4,brave:true,
     interj:['...','la vérité.','je serai Jūbi.'],
     techs:['kamui_warp','mokuton','gudodama','kamui_blast','katon']},
@@ -373,6 +374,7 @@ const TECHS={
   toad_summon:{name:'Invocation: Crapaud',chakra:70,cd:1200,dmg:40,kind:'toad',decal:'crater_big',windup:40,big:true},
   hair_needles:{name:'Aiguilles de Cheveux',chakra:40,cd:520,dmg:32,kind:'needles',windup:26},
   sexy_jutsu:{name:'Sexy Jutsu',chakra:15,cd:300,dmg:0,kind:'sexy',windup:20},
+  frogform:{name:'Métamorphose Crapaud',chakra:25,cd:520,dmg:0,kind:'frog',windup:16},
   oodama_rasengan:{name:'Oodama Rasengan',chakra:50,cd:560,dmg:46,kind:'rasengan',decal:'crater_big',windup:30,big:true},
   bijudama:{name:'Bijūdama',chakra:95,cd:1700,dmg:75,kind:'bijudama',decal:'crater_big',windup:48,big:true,screen:true},
   kirin:{name:'Kirin',chakra:90,cd:1600,dmg:72,kind:'kirin',decal:'scar_big',windup:46,big:true,screen:true},
@@ -625,7 +627,7 @@ class Char{
     this.baseScale=0.82+Math.random()*.12;
     // animation/expression state
     this.walkPhase=0;this.moveAmt=0;this.breathe=Math.random()*Math.PI*2;
-    this.hitT=0;this.guardT=0;this.blinkT=60+Math.random()*160|0;this.blink=0;this.landT=0;
+    this.hitT=0;this.guardT=0;this.blinkT=60+Math.random()*160|0;this.blink=0;this.landT=0;this.frogT=0;
     this.mood='wander';this.moodT=0;
     this.roamX=x;this.roamT=0;
     this.partner=null;this.foe=null;this.convo=null;this.lookAt=null;this.busy=false;
@@ -972,6 +974,7 @@ class Char{
         for(const c of chars){if(c===this)continue;const d=Math.abs(c.x-this.x);if(d<300){c.anger=clamp(c.anger-34,0,100);c.happy=clamp(c.happy+12,0,100);c.emoteShow('😍',90);c.say(pick(['Hein?!','...!','Wooow','*figé*']),120);floatTxt.push({txt:'💧',x:c.x+8,y:c.y-58,vy:-0.4,life:50});if(c.mood==='fight'){c.endFight()}}}
         notify(`${this.name}: Sexy Jutsu! 💨`,'#ff88bb');
       }
+      if(def.kind==='frog'){ const tg=target||this; tg.frogT=320; effects.push({kind:'poof',x:tg.x,y:tg.y-20,t:0,dur:24}); tg.say('Croâ?!',120); notify(`${this.name}: ${tg.name} transformé en crapaud!`,'#6ec24a'); }
     }
     this.tech=null;
   }
@@ -1840,7 +1843,8 @@ function drawChar(c){
   // soft ground shadow
   const shd=ctx.createRadialGradient(0,3,1,0,3,24);shd.addColorStop(0,'rgba(0,0,0,.30)');shd.addColorStop(1,'rgba(0,0,0,0)');
   ctx.fillStyle=shd;ctx.beginPath();ctx.ellipse(0,3,24,7,0,0,Math.PI*2);ctx.fill();
-  (DRAW[c.type]||_drawNaruto)(ctx,leg,arm,atk,c,T);
+  if(c.frogT>0)c.frogT--;
+  if(!drawSpriteFrame(c)) (DRAW[c.type]||_drawNaruto)(ctx,leg,arm,atk,c,T);
   // cel form-shading (clips to the character silhouette via source-atop): top light + bottom AO + left rim
   ctx.globalCompositeOperation='source-atop';
   const sh=ctx.createLinearGradient(0,-66,0,4);sh.addColorStop(0,'rgba(255,250,235,.20)');sh.addColorStop(.42,'rgba(255,255,255,0)');sh.addColorStop(1,'rgba(18,14,28,.34)');
@@ -1948,19 +1952,53 @@ function _sharingan(cx,cy,r){
 // ── Vrais fonds depuis le repo (repli sur décors dessinés si pas chargés) ──
 const BG_BASE='https://raw.githubusercontent.com/zarentos/naruto-test/main/naruto%20projet/assets/backgrounds/';
 const BG_FILES=['Training%20Field.png','Uchiha%20Hideout.png','Rocks%20night.png','Suigetsu%20Stage.png','Rocks%20day.png'];
+// content crop (trims the blue #004080 border so we zoom on the real scene)
+const BG_CROP={0:[31,29,505,491],1:[26,43,508,477],2:[11,28,600,577],3:[19,33,662,1248],4:[13,34,633,752]};
 const BG_IMG=BG_FILES.map((f,i)=>{const im=new Image();im.crossOrigin='anonymous';im.onload=()=>{if(scene===i&&!dimension)drawBg()};im.src=BG_BASE+f;return im});
-function drawCover(x,img){const ar=img.naturalWidth/img.naturalHeight,AR=W/H;let dw,dh;if(ar>AR){dh=H;dw=H*ar}else{dw=W;dh=W/ar}x.drawImage(img,(W-dw)/2,(H-dh)/2,dw,dh)}
+function drawCover(x,img,c){const sx=c?c[0]:0,sy=c?c[1]:0,sw=c?c[2]:img.naturalWidth,sh=c?c[3]:img.naturalHeight;const ar=sw/sh,AR=W/H;let dw,dh;if(ar>AR){dh=H;dw=H*ar}else{dw=W;dh=W/ar}x.drawImage(img,sx,sy,sw,sh,(W-dw)/2,(H-dh)/2,dw,dh)}
 function drawBg(){
   bgX.clearRect(0,0,W,H);
   if(dimension==='ice'){_bgDimIce();return}
   if(dimension==='lava'){_bgDimLava();return}
   const bi=BG_IMG[scene];
-  if(bi&&bi.complete&&bi.naturalWidth>0){drawCover(bgX,bi);return}
+  if(bi&&bi.complete&&bi.naturalWidth>0){drawCover(bgX,bi,BG_CROP[scene]);return}
   if(scene===0) _bgKonoha();
   else if(scene===1) _bgForest();
   else if(scene===2) _bgNight();
   else if(scene===3) _bgArena();
   else _bgBridge();
+}
+// ── SPRITES persos (planches du repo, détourées du bleu en live) ──
+let frogMode=false;
+const SPR_BASE='https://raw.githubusercontent.com/zarentos/naruto-test/main/naruto%20projet/assets/';
+const SPR_DATA={"naruto":{"file":"Naruto.png","idle":[[8,1031,60,65],[74,1031,61,65],[141,1031,62,65],[209,1031,63,65]],"run":[[8,1123,67,53],[81,1123,66,53],[153,1123,53,53],[212,1123,67,53],[285,1123,66,53],[357,1123,53,53]],"frog":[[8,5321,37,60],[163,5321,38,60]]},"sasuke":{"file":"Sasuke.png","idle":[[8,1184,48,68],[62,1184,48,68],[116,1184,49,68],[171,1184,48,68],[225,1184,49,68],[280,1184,48,68]],"run":[[8,1283,65,56],[79,1283,61,56],[146,1283,58,56],[210,1283,64,56],[280,1283,60,56],[346,1283,58,56]],"frog":[[8,3917,41,59],[163,3917,45,59]]},"sakura":{"file":"Sakura.png","idle":[[8,1040,51,67],[65,1040,51,67],[122,1040,51,67],[179,1040,50,67]],"run":[[8,1136,66,51],[80,1136,63,51],[149,1136,49,51],[204,1136,66,51],[276,1136,63,51],[345,1136,49,51]],"frog":[[8,3895,33,57],[163,3895,39,57]]},"kakashi":{"file":"Kakashi.png","idle":[[8,1071,58,64],[72,1071,58,64],[136,1071,58,64],[200,1071,58,64]],"run":[[8,1170,80,66],[94,1170,78,66],[178,1170,61,66],[245,1170,76,66],[327,1170,82,66],[415,1170,61,66]],"frog":[[8,4164,33,63],[196,4164,38,63]]},"itachi":{"file":"Itachi.png","idle":[[8,1080,31,80],[45,1080,34,80],[85,1080,34,80],[125,1080,34,80],[165,1080,31,80],[202,1080,35,80],[243,1080,34,80]],"run":[[8,1193,58,56],[72,1193,58,56],[136,1193,61,56],[203,1193,58,56],[267,1193,64,56],[336,1193,61,56]],"frog":[[8,4077,34,57],[163,4077,38,57]]},"orochimaru":{"file":"Orochimaru.png","idle":[[8,1056,39,68],[53,1056,39,68],[98,1056,39,68],[143,1056,39,68]],"run":[[8,1155,74,65],[88,1155,51,65],[145,1155,63,65],[214,1155,74,65],[294,1155,51,65],[351,1155,65,65]],"frog":[[8,4368,33,57],[163,4368,38,57]]},"jiraya":{"file":"Jiraiya.png","idle":[[8,1167,71,78],[85,1167,71,78],[162,1167,70,78],[238,1167,70,78]],"run":[[8,1279,80,72],[94,1279,80,72],[180,1279,72,72],[258,1279,80,72],[344,1279,79,72],[429,1279,72,72]],"frog":[[8,4699,61,83],[75,4699,62,83],[143,4699,88,83]]},"pain":{"file":"Pain.png","idle":[[8,1076,32,83],[46,1076,33,83],[85,1076,34,83],[125,1076,33,83],[164,1076,32,83],[202,1076,31,83],[239,1076,31,83],[276,1076,31,83]],"run":[[8,1194,60,62],[74,1194,66,62],[146,1194,59,62],[211,1194,60,62],[277,1194,68,62],[351,1194,59,62]],"frog":[[8,3916,33,65],[163,3916,38,65]]}};
+const SPR_CANVAS={};
+function loadSprite(key){
+  const d=SPR_DATA[key];if(!d)return;
+  const img=new Image();img.crossOrigin='anonymous';
+  img.onload=()=>{try{
+    const cv=document.createElement('canvas');cv.width=img.naturalWidth;cv.height=img.naturalHeight;
+    const cx=cv.getContext('2d');cx.drawImage(img,0,0);
+    const idd=cx.getImageData(0,0,cv.width,cv.height),p=idd.data;
+    for(let i=0;i<p.length;i+=4){if(Math.abs(p[i])+Math.abs(p[i+1]-64)+Math.abs(p[i+2]-128)<70)p[i+3]=0;}
+    cx.putImageData(idd,0,0);SPR_CANVAS[key]=cv;d._k=82/((d.idle[0]&&d.idle[0][3])||70);
+  }catch(e){SPR_CANVAS[key]=null;}};
+  img.onerror=()=>{SPR_CANVAS[key]=null;};
+  img.src=SPR_BASE+d.file;
+}
+Object.keys(SPR_DATA).forEach(loadSprite);
+function drawSpriteFrame(c){
+  const cv=SPR_CANVAS[c.type],d=SPR_DATA[c.type];if(!cv||!d)return false;
+  let frames;
+  if((frogMode||c.frogT>0)&&d.frog&&d.frog.length)frames=d.frog;
+  else if(Math.abs(c.vx)>0.5&&c.onGround&&d.run&&d.run.length)frames=d.run;
+  else frames=d.idle;
+  if(!frames||!frames.length)return false;
+  const fr=frames[Math.floor(T/6)%frames.length],k=d._k||1.2;
+  const dw=fr[2]*k,dh=fr[3]*k;
+  ctx.imageSmoothingEnabled=false;
+  ctx.drawImage(cv,fr[0],fr[1],fr[2],fr[3],-dw/2,4-dh,dw,dh);
+  return true;
 }
 // ── Kaguya dimensions ──
 function _bgDimIce(){
@@ -2374,6 +2412,7 @@ function selItem(el,it){curItem=it;document.querySelectorAll('.ib').forEach(b=>b
 function bigBattle(){for(const c of chars){const f=pick(chars.filter(x=>x!==c));if(f){c.setMood('fight');c.foe=f;c.fightT=400;c.anger=70}}notify('⚔ Bataille générale!','#ff2200')}
 function peace(){for(const c of [...chars,...clones]){c.setMood('idle');c.moodT=120;c.anger=0;c.hp=100;c.foe=null;c.partner=null;if(c.convo)c.convo.end();c.say(pick(['☮','Paix.','La paix...','Enfin calme.']),140)}convos=[];clones=[];notify('☮ Tout le monde se calme','#44aaff')}
 function toggleChakra(){chakra=!chakra;document.getElementById('btnChakra').classList.toggle('on',chakra);notify(chakra?'🔵 Sharingan en surrégime':'Chakra mode off',chakra?'#ff6600':'#888')}
+function toggleFrog(){frogMode=!frogMode;document.getElementById('frogBtn').classList.toggle('on',frogMode);notify(frogMode?'🐸 Tout le monde en crapaud!':'Retour à la normale','#6ec24a')}
 function toggleSharingan(){sharinganOn=!sharinganOn;document.getElementById('btnShar').classList.toggle('off',!sharinganOn);document.getElementById('btnShar').textContent=sharinganOn?'👁️ Sharingan ON':'👁️ Sharingan OFF';notify(sharinganOn?'Sharingan activé':'Sharingan désactivé','#cc1518')}
 document.getElementById('sldCam').oninput=function(){camOpacity=+this.value;document.getElementById('vCam').textContent=this.value+'%'};
 document.getElementById('sldShar').oninput=function(){sharScale=this.value/100;document.getElementById('vShar').textContent=this.value+'%'};
