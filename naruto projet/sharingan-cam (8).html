@@ -775,11 +775,14 @@ class Char{
     for(const k in this.techCD)if(this.techCD[k]>0)this.techCD[k]--;
     if(this.techCDg>0)this.techCDg--;
     if(this._pend && this.animT<=this._pend.t){
-      const f=this._pend.foe, eff=this._pend.eff||{kind:'hit'}, dmg=this._pend.dmg||14; this._pend=null;
-      const tx=f?f.x:this.x+this.facing*130, ty=f?f.y-24:this.y-24;
-      const big=['chibaku','kirin','amaterasu','tsukuyomi','sand_tsunami','rasenshuriken'].includes(eff.kind);
-      effects.push({kind:eff.kind,x:tx,y:ty,sx:this.x,sy:this.y-32,t:0,dur:big?56:eff.kind==='hit'?14:44,owner:this});
-      shakeT=big?16:10;shakeA=big?4:3;
+      const f=this._pend.foe, eff=this._pend.eff||{fx:'impact',mode:'onfoe',scale:1.6}, dmg=this._pend.dmg||14; this._pend=null;
+      const fx0=this.x+this.facing*24, fy0=this.y-42;
+      const tx=f?f.x:this.x+this.facing*170, ty=f?f.y-30:this.y-30;
+      const n=(EFX_DATA[eff.fx]&&EFX_DATA[eff.fx].length)||4;
+      effects.push({kind:'fx',fx:eff.fx,mode:eff.mode,scale:eff.scale||1.6,
+        x:(eff.mode==='oncaster')?this.x:tx, y:(eff.mode==='oncaster')?this.y-30:ty,
+        sx:fx0,sy:fy0,t:0,dur:n*7+20,owner:this});
+      shakeT=12;shakeA=3;
       if(f&&f.hp>0){f.hp=clamp(f.hp-dmg,0,100);f.anger=clamp(f.anger+16,0,100);f.hitT=16;
         f.vx+=(f.x>this.x?1:-1)*4;f.vy=-3;f.onGround=false;
         this.rel[f.type]=clamp((this.rel[f.type]??45)-5,0,100);
@@ -932,7 +935,10 @@ class Char{
   }
   playMove(mv,foe){
     const eff=moveEffect(mv.n);
-    this.animFrames=mv.f; this.animT=mv.f.length*6+26; this.castT=this.animT;
+    let cf=mv.f.filter(f=>f[2]>=36&&f[3]>=42);
+    const d0=SPR_DATA[this.type];
+    if(cf.length<2)cf=(d0&&d0.atk&&d0.atk.length)?d0.atk:mv.f;
+    this.animFrames=cf; this.animT=cf.length*6+26; this.castT=this.animT;
     this.facing=(foe&&foe!==this)?(foe.x>this.x?1:-1):this.facing;
     this.chk=Math.max(0,this.chk-26);
     this.say(mv.n+'!',130); notify(`✦ ${this.name} → ${mv.n}`,'#ffcc33');
@@ -1174,6 +1180,22 @@ function drawEffects(){
     const sc=o?o.scale:1;
     const LBL=(t,x,y,col,sub)=>{ctx.fillStyle=col;ctx.strokeStyle='rgba(0,0,0,.55)';ctx.lineWidth=3;ctx.font='bold 13px sans-serif';ctx.textAlign='center';ctx.strokeText(t,x,y);ctx.fillText(t,x,y)};
     switch(e.kind){
+      case 'fx':{
+        const grp=EFX_DATA[e.fx], cnv=(e.fx==='rasengan_orb')?SPR_CANVAS['naruto']:EFX_CANVAS;
+        if(grp&&grp.length&&cnv){
+          const prog=Math.min(1,e.t/e.dur); let px=e.x,py=e.y;
+          if(e.mode==='projectile'){const k=Math.min(1,prog*1.7);px=e.sx+(e.x-e.sx)*k;py=e.sy+(e.y-e.sy)*k;}
+          const fi=Math.min(grp.length-1,Math.floor(prog*grp.length)),f=grp[fi],s=(e.scale||1.6);
+          const dw=f[2]*s,dh=f[3]*s;
+          ctx.globalAlpha=prog>0.82?Math.max(0,(1-prog)/0.18):1;
+          ctx.shadowColor=e.fx==='electricity'?'#7fd0ff':e.fx==='black_fire'?'#9a5fe6':(e.fx==='fireball'||e.fx==='explosion'||e.fx==='red_fire')?'#ff8a3a':(e.fx==='rasengan_orb'||e.fx==='burst_blue')?'#6fc8ff':'#ffd060';
+          ctx.shadowBlur=18;ctx.imageSmoothingEnabled=false;
+          ctx.drawImage(cnv,f[0],f[1],f[2],f[3],px-dw/2,py-dh/2,dw,dh);
+          ctx.shadowBlur=0;ctx.globalAlpha=1;
+        }
+        if(e.t>=e.dur)done=true;
+        break;
+      }
       case 'hit':
         ctx.translate(e.x,e.y);ctx.globalAlpha=1-e.t/e.dur;ctx.strokeStyle='#fff';ctx.lineWidth=2.5;
         for(let k=0;k<7;k++){const a2=k/7*Math.PI*2;const r=4+e.t*2;ctx.beginPath();ctx.moveTo(Math.cos(a2)*r*.5,Math.sin(a2)*r*.5);ctx.lineTo(Math.cos(a2)*r,Math.sin(a2)*r);ctx.stroke()}
@@ -2038,28 +2060,33 @@ function loadSprite(key){
   img.src=SPR_BASE+d.file;
 }
 Object.keys(SPR_DATA).forEach(loadSprite);
+const EFX_DATA={"eff_url":"Items%20Effects%20%20Icons.png","explosion":[[8,1184,63,64],[86,1204,29,30],[130,1203,30,30],[175,1193,47,51],[235,1188,61,57]],"fireball":[[86,1204,29,30],[130,1203,30,30],[175,1193,47,51],[235,1188,61,57]],"electricity":[[8,1493,30,62],[40,1493,30,64],[96,1495,61,59]],"red_fire":[[237,1514,15,16],[260,1511,15,18],[283,1512,15,17],[305,1513,15,16],[329,1510,15,19],[352,1511,15,18]],"black_fire":[[437,1514,15,16],[460,1511,15,18],[483,1512,15,17],[505,1513,15,16],[529,1510,15,19]],"impact":[[55,1614,51,67],[115,1624,54,55],[181,1629,39,43],[232,1612,32,74],[267,1612,32,66],[313,1610,32,72]],"impact_red":[[8,1835,27,26],[54,1822,52,50],[124,1817,63,61]],"burst_blue":[[8,1910,55,86],[64,1911,54,85],[131,1909,93,87],[240,1946,33,33]],"smoke":[[221,2174,26,15],[261,2168,27,21],[298,2151,45,38],[357,2151,30,34]],"rasengan_orb":[[8,3023,23,22],[37,3015,23,34],[66,3015,27,35],[99,3021,30,29],[135,3019,30,35]]};
+let EFX_CANVAS=null;
+(function loadEffectSheet(){
+  const img=new Image();img.crossOrigin="anonymous";
+  img.onload=()=>{try{const cv=document.createElement("canvas");cv.width=img.naturalWidth;cv.height=img.naturalHeight;
+    const cx=cv.getContext("2d");cx.drawImage(img,0,0);const idd=cx.getImageData(0,0,cv.width,cv.height),p=idd.data;
+    for(let i=0;i<p.length;i+=4){if(Math.abs(p[i])+Math.abs(p[i+1]-64)+Math.abs(p[i+2]-128)<70)p[i+3]=0;}
+    cx.putImageData(idd,0,0);EFX_CANVAS=cv;}catch(e){EFX_CANVAS=null;}};
+  img.onerror=()=>{EFX_CANVAS=null;};
+  img.src=SPR_BASE+EFX_DATA.eff_url;
+})();
 function moveEffect(nm){
   const s=nm.toLowerCase();
   if(/transf|kyūbi|kyuubi|ermite|sage|sceau maudit|cursed|conversion|crapaud/.test(s)){
     const aura=/kyūbi|kyuubi/.test(s)?'kyubi':/ermite|sage|crapaud|conversion/.test(s)?'sage':'sharingan_reveal';
     return {transform:true,aura};
   }
-  if(/rasen.?shuriken/.test(s))return{kind:'rasenshuriken'};
-  if(/rasengan/.test(s))return{kind:'rasengan'};
-  if(/chidori|eisō|eiso/.test(s))return{kind:'chidori'};
-  if(/raikiri/.test(s))return{kind:'raikiri'};
-  if(/kirin/.test(s))return{kind:'kirin'};
-  if(/amaterasu/.test(s))return{kind:'amaterasu'};
-  if(/tsukuyomi/.test(s))return{kind:'tsukuyomi'};
-  if(/kamui/.test(s))return{kind:'kamui'};
-  if(/chibaku/.test(s))return{kind:'chibaku'};
-  if(/shinra|tensei|voies|path/.test(s))return{kind:'shinra'};
-  if(/banshō|ten'in|tenin/.test(s))return{kind:'pull'};
-  if(/serpent|snake|sen'ei|jashu/.test(s))return{kind:'snakes'};
-  if(/suiton|aqua|water|suikō|suiko|eau/.test(s))return{kind:'sand_tsunami'};
-  if(/goukak|katon|endan|feu|flame|fire|argile|clay|spider|falcon|eagle|bombe|explos/.test(s))return{kind:'fireball'};
-  if(/papier|paper|shuriken|kunai|shikigami|kami|chōjū|chouju|encre|ink/.test(s))return{kind:'needles'};
-  return{kind:'hit'};
+  if(/rasen.?shuriken/.test(s))return{fx:'burst_blue',mode:'projectile',scale:1.8};
+  if(/rasengan/.test(s))return{fx:'rasengan_orb',mode:'projectile',scale:1.9};
+  if(/chidori|raikiri|kirin|eisō|eiso/.test(s))return{fx:'electricity',mode:'projectile',scale:1.7};
+  if(/amaterasu/.test(s))return{fx:'black_fire',mode:'onfoe',scale:2.3};
+  if(/goukak|katon|endan|feu|flame|fire/.test(s))return{fx:'fireball',mode:'projectile',scale:2.2};
+  if(/argile|clay|spider|falcon|eagle|c0|c1|c2|c3|bombe|explos|burst|violent|ground/.test(s))return{fx:'explosion',mode:'onfoe',scale:2.4};
+  if(/suiton|aqua|water|suikō|suiko|eau|tranche|aqua slash/.test(s))return{fx:'burst_blue',mode:'projectile',scale:1.9};
+  if(/tsukuyomi|kamui|shinra|tensei|chibaku|banshō|tenin|voies|path/.test(s))return{fx:'burst_blue',mode:'onfoe',scale:2.4};
+  if(/serpent|snake|sen'ei|jashu|paper|papier|shuriken|kunai|shikigami|kami|chōjū|chouju|encre|ink|kage|shadow|nui|mane|zessen/.test(s))return{fx:'impact',mode:'onfoe',scale:1.7};
+  return{fx:'impact',mode:'onfoe',scale:1.7};
 }
 function drawSpriteFrame(c){
   const cv=SPR_CANVAS[c.type],d=SPR_DATA[c.type];if(!cv||!d)return false;
